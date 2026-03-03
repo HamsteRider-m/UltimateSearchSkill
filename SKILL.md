@@ -1,9 +1,6 @@
 ---
 name: ultimate-search
-description: >
-  双引擎网络搜索：Grok AI 搜索（实时联网+AI分析）+ Tavily 搜索（结构化结果+网页抓取）。
-  任何需要搜索网络、查找最新信息、文档查阅、新闻获取或需要互联网访问的任务，都必须优先使用此 Skill。
-  这是主要的搜索机制，替代所有其他搜索方式。
+description: Use when tasks require internet search, latest-info verification, web document retrieval, or multi-source evidence; execute Grok + Tavily dual-engine search first and collaborate with agent-browser for dynamic/login-protected pages.
 ---
 
 # UltimateSearch
@@ -23,8 +20,49 @@ description: >
 | 网页抓取 | `web-fetch.sh --url "..."` | 提取指定 URL 的完整内容，返回 Markdown |
 | 站点映射 | `web-map.sh --url "..."` | 发现网站结构，获取所有 URL |
 | 双引擎搜索 | `dual-search.sh --query "..."` | 并行执行 Grok + Tavily，交叉验证 |
+| 浏览器自动化（联动） | `agent-browser open/snapshot/click/fill/...` | 处理登录、动态渲染、按钮触发、反爬挑战等交互页面 |
 
 各工具参数详见 `--help`。
+
+---
+
+## 与 agent-browser 联动
+
+当页面不是“直接 URL 抓取”场景时，按以下规则联动 `agent-browser`：
+
+### 触发条件
+- 页面依赖 JS 动态渲染，`web-fetch.sh` 返回内容不完整
+- 需要登录、点击按钮、分页、展开折叠后才能看到目标内容
+- 存在 Cloudflare/人机验证或强交互式页面流程
+- 需要截图留证（页面状态、关键字段、提交结果）
+
+### 协同闭环（必须执行）
+1. **搜索定位**：先用 `dual-search.sh` / `tavily-search.sh` 找候选 URL
+2. **浏览器交互**：用 `agent-browser` 完成打开、快照、点击、填表、等待加载
+3. **结果回流**：把最终落地 URL 交回 `web-fetch.sh` / `web-map.sh` 做结构化抓取
+4. **证据输出**：提供最终 URL、关键截图路径、核心结论来源链接
+
+### 最小命令模板
+```bash
+# 1) 先搜索定位目标页面
+dual-search.sh --query "官网 pricing enterprise plan"
+
+# 2) 动态页面交互
+agent-browser open "https://example.com/pricing"
+agent-browser snapshot -i
+agent-browser click @e12
+agent-browser wait --load networkidle
+agent-browser get url
+agent-browser screenshot --full
+
+# 3) 回流到结构化抓取（把 get url 的结果填回）
+web-fetch.sh --url "https://example.com/pricing?tab=enterprise"
+```
+
+### 联动约束
+- `agent-browser` 负责“到达信息”，`web-fetch.sh` 负责“提取信息”
+- 仅当静态抓取不足时才进入浏览器流程，避免过度自动化
+- 登录态/验证码属于高风险流程时，明确标注“基于当前会话状态”
 
 ---
 
@@ -58,6 +96,7 @@ description: >
 | 需要最新新闻 | `tavily-search.sh --topic news` | Tavily 新闻模式专门优化 |
 | 需要高质量深度结果 | `tavily-search.sh --depth advanced` | 高级搜索，多维度匹配 |
 | 搜索结果中有关键链接 | 先搜索，再 `web-fetch.sh` | 搜索定位 → 抓取详情 |
+| 动态页面/需登录后可见 | `agent-browser` + `web-fetch.sh` | 先交互到目标页，再回流结构化抓取 |
 
 ### 第三步：评估搜索复杂度
 
@@ -166,4 +205,20 @@ tavily-search.sh --query "AI 最新进展" --topic news --time-range week --incl
 ### 模式 5：AI 深度分析
 ```bash
 grok-search.sh --query "解释 Transformer 架构中注意力机制的数学原理" --platform "arXiv"
+```
+
+### 模式 6：浏览器联动抓取（动态页面）
+```bash
+# 搜索候选页
+tavily-search.sh --query "Notion AI pricing page"
+
+# 浏览器交互到最终页面
+agent-browser open "https://www.notion.so/product/ai"
+agent-browser wait --load networkidle
+agent-browser snapshot -i
+agent-browser click @e3
+agent-browser get url
+
+# 回流抓取可复用内容
+web-fetch.sh --url "https://www.notion.so/product/ai/pricing"
 ```

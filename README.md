@@ -8,7 +8,8 @@
                 ├─ tavily-search.sh → TavilyProxyManager (多Key聚合) → Tavily 搜索
                 ├─ web-fetch.sh    → Tavily Extract → FireCrawl Scrape (自动降级)
                 ├─ web-map.sh      → TavilyProxyManager → Tavily Map (站点映射)
-                └─ dual-search.sh  → 并行调用以上，交叉验证
+                ├─ dual-search.sh  → 并行调用以上，交叉验证
+                └─ agent-browser   → 动态交互/登录后回流到 web-fetch
 ```
 
 ## 特性
@@ -18,6 +19,7 @@
 - **FireCrawl 托底**：web-fetch 三级降级链（Tavily Extract → FireCrawl Scrape → 报错）
 - **Cloudflare 自动绕过**：FlareSolverr 自动获取并定期刷新 `cf_clearance`
 - **零 MCP 依赖**：纯 Shell 脚本 + Skill 指令，agent 通过 Bash 原生调用
+- **浏览器联动**：可与 `agent-browser` 协同，处理登录态、动态渲染、按钮触发等页面
 - **安全加固**：端口绑定 127.0.0.1，API 认证，SSH 隧道访问管理面板
 - **搜索方法论**：内置 GrokSearch MCP 的搜索规划框架和证据标准
 
@@ -263,6 +265,14 @@ web-fetch.sh --url "https://docs.python.org/3/whatsnew/3.13.html"
 
 # 站点映射
 web-map.sh --url "https://docs.tavily.com" --depth 2
+
+# 动态页面联动（agent-browser 先交互，再回流抓取）
+agent-browser open "https://example.com/pricing"
+agent-browser wait --load networkidle
+agent-browser snapshot -i
+agent-browser click @e3
+agent-browser get url
+web-fetch.sh --url "https://example.com/pricing?tab=enterprise"
 ```
 
 ## 注册为 Skill
