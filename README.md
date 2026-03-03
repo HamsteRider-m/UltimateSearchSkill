@@ -20,8 +20,10 @@
 - **Cloudflare 自动绕过**：FlareSolverr 自动获取并定期刷新 `cf_clearance`
 - **零 MCP 依赖**：纯 Shell 脚本 + Skill 指令，agent 通过 Bash 原生调用
 - **浏览器联动**：可与 `agent-browser` 协同，处理登录态、动态渲染、按钮触发等页面
+- **X/Twitter 优先路由**：讨论类舆情查询优先走 `grok-search --platform "X"`
 - **安全加固**：端口绑定 127.0.0.1，API 认证，SSH 隧道访问管理面板
 - **搜索方法论**：内置 GrokSearch MCP 的搜索规划框架和证据标准
+- **BDD 可靠性场景**：提供路由验收场景，防止技能退化（见 `docs/bdd/ultimate-search-routing.feature`）
 
 ## 快速开始
 
@@ -273,6 +275,10 @@ agent-browser snapshot -i
 agent-browser click @e3
 agent-browser get url
 web-fetch.sh --url "https://example.com/pricing?tab=enterprise"
+
+# X/Twitter 讨论类检索（优先 Grok）
+grok-search.sh --query "检索 X 上有关伊朗战争讨论" --platform "X"
+tavily-search.sh --query "Iran war discussion on X" --topic news --time-range week
 ```
 
 ## 注册为 Skill

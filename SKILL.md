@@ -66,6 +66,49 @@ web-fetch.sh --url "https://example.com/pricing?tab=enterprise"
 
 ---
 
+## 平台路由优先级（含 X/Twitter）
+
+为避免“会搜，但搜错引擎”，先按查询意图做路由：
+
+| 查询意图 | 首选 | 备选 | 原因 |
+|------|------|------|------|
+| X/Twitter 讨论、实时舆情、热点争议 | `grok-search.sh --platform "X"` | `dual-search.sh` | Grok 对 X 平台语境和实时讨论更强 |
+| 通用网页事实、新闻、可结构化结果 | `tavily-search.sh` | `dual-search.sh` | Tavily 结构化结果稳定、便于引用 |
+| 结论风险高、容易冲突的问题 | `dual-search.sh` | 无 | 默认双源交叉验证 |
+| 需要最终页面全文 | `web-fetch.sh` | `agent-browser` 后回流 `web-fetch.sh` | 先定位来源，再抓取正文 |
+
+### X 场景强制规则
+- 用户提到 `X`、`Twitter`、`推特`、`帖子讨论`、`时间线观点` 时，先执行：
+```bash
+grok-search.sh --query "..." --platform "X"
+```
+- 若需“可引用链接 + 交叉证据”，第二步再跑：
+```bash
+tavily-search.sh --query "..." --topic news --time-range week
+```
+
+---
+
+## 凭据获取联动（agent-browser headed）
+
+当用户要求“在浏览器里获取 Grok SSO Token / cf_clearance”时：
+
+1. 使用 `agent-browser --headed` 打开目标站点并人工完成登录/验证
+2. 通过浏览器开发者工具读取 cookie（`sso`、`cf_clearance`）
+3. 立即写入本地 `.env` 或导入脚本，不在对话中回显完整敏感值
+4. 用最小健康检查验证是否可用（`grok-search.sh --query "test"`）
+
+最小流程示例：
+```bash
+agent-browser --headed open "https://grok.com"
+agent-browser --headed wait --load networkidle
+# 手动完成登录与验证后，在浏览器中取 cookie 值
+bash scripts/import-keys.sh
+bash scripts/grok-search.sh --query "test" --model "grok-4.1-mini"
+```
+
+---
+
 ## 搜索决策流程
 
 收到需要搜索的请求时，按以下流程决策：
@@ -97,6 +140,7 @@ web-fetch.sh --url "https://example.com/pricing?tab=enterprise"
 | 需要高质量深度结果 | `tavily-search.sh --depth advanced` | 高级搜索，多维度匹配 |
 | 搜索结果中有关键链接 | 先搜索，再 `web-fetch.sh` | 搜索定位 → 抓取详情 |
 | 动态页面/需登录后可见 | `agent-browser` + `web-fetch.sh` | 先交互到目标页，再回流结构化抓取 |
+| X/Twitter 讨论类查询 | `grok-search.sh --platform "X"` | 优先匹配 X 平台语境与实时讨论 |
 
 ### 第三步：评估搜索复杂度
 
@@ -222,3 +266,24 @@ agent-browser get url
 # 回流抓取可复用内容
 web-fetch.sh --url "https://www.notion.so/product/ai/pricing"
 ```
+
+### 模式 7：X/Twitter 讨论检索（会话来源对齐）
+```bash
+# 先用 Grok 聚焦 X 平台语境
+grok-search.sh --query "检索 X 上有关伊朗战争讨论" --platform "X"
+
+# 再用 Tavily 补充结构化链接，做交叉验证
+tavily-search.sh --query "Iran war discussion on X" --topic news --time-range week
+```
+
+---
+
+## BDD 可靠性验证
+
+对“什么时候用 Grok / Tavily / agent-browser”做场景化回归，避免路由漂移。
+
+- 场景文件：`docs/bdd/ultimate-search-routing.feature`
+- 最低验收标准：
+  - X/Twitter 讨论类查询必须先触发 `grok-search.sh --platform "X"`
+  - 动态页面类查询必须进入 `agent-browser` 并回流 `web-fetch.sh`
+  - 事实型结论必须有双源交叉验证证据
