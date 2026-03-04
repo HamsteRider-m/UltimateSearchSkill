@@ -91,16 +91,24 @@ echo ""
 TAVILY_MASTER_KEY="${TAVILY_MASTER_KEY:-}"
 
 if [[ -z "$TAVILY_MASTER_KEY" ]]; then
-  info "TAVILY_MASTER_KEY 未设置，尝试从日志获取..."
+  info "TAVILY_MASTER_KEY 未设置，尝试自动发现..."
   cd "$PROJECT_DIR"
+
+  # 优先从日志读取（兼容旧版本输出）
   if command -v docker &>/dev/null; then
     TAVILY_MASTER_KEY=$(docker compose logs tavily-proxy 2>&1 | grep -oE 'master_key=[^ ]+' | head -1 | cut -d= -f2 || true)
-    if [[ -n "$TAVILY_MASTER_KEY" ]]; then
-      ok "从日志获取到 Master Key: ${TAVILY_MASTER_KEY:0:10}..."
-      warn "请将此 Key 填入 .env 的 TAVILY_MASTER_KEY 和 TAVILY_API_KEY"
-    else
-      error "无法从日志获取 Master Key"
-    fi
+  fi
+
+  # 新版本日志可能不输出 master key，回退到本地 sqlite
+  if [[ -z "$TAVILY_MASTER_KEY" && -f "$PROJECT_DIR/data/tavily-proxy/proxy.db" ]] && command -v sqlite3 &>/dev/null; then
+    TAVILY_MASTER_KEY=$(sqlite3 "$PROJECT_DIR/data/tavily-proxy/proxy.db" "select value from settings where key='master_key';" 2>/dev/null || true)
+  fi
+
+  if [[ -n "$TAVILY_MASTER_KEY" ]]; then
+    ok "已发现 Master Key: ${TAVILY_MASTER_KEY:0:10}..."
+    warn "请将此 Key 填入 .env 的 TAVILY_MASTER_KEY 和 TAVILY_API_KEY"
+  else
+    error "无法自动获取 Master Key"
   fi
 fi
 
@@ -128,9 +136,9 @@ if [[ -n "$TAVILY_API_KEYS" && -n "$TAVILY_MASTER_KEY" ]]; then
 
     HTTP_CODE=$(echo "$RESULT" | tail -1)
     if [[ "$HTTP_CODE" -eq 200 ]]; then
-      ((SUCCESS++))
+      SUCCESS=$((SUCCESS + 1))
     else
-      ((FAIL++))
+      FAIL=$((FAIL + 1))
       BODY=$(echo "$RESULT" | sed '$d')
       warn "Tavily Key ${key:0:10}... 导入失败: $BODY"
     fi
